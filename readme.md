@@ -15,6 +15,7 @@
 * 🕵️ Dificuldades Encontradas
 * 🔑 Política de Permissões AWS
 * 🖥️ Detalhes sobre a Função Lambda
+* ⚠️ Configuração no Lambda Authorizer
 
 ## 📚 Contextualização do projeto
 
@@ -57,6 +58,10 @@ A estrutura do projeto é organizada da seguinte maneira:
 
 ```
 .
+├── disconnect_lambda/
+│   ├── .env.example
+│   ├── .env
+│   └── lambda_handler.py
 ├── connect_lambda/
 │   ├── services/
 │   │   ├── apigateway_service.py
@@ -160,3 +165,64 @@ def lambda_handler(event, context):
 3. **`stage`**: Indica o estágio do API Gateway (por exemplo, `dev`, `prod`).
 
 Essas informações são cruciais para gerenciar conexões e enviar mensagens em tempo real para os clientes conectados.
+
+## ⚠️ Observação sobre o WebSocket Authorizer
+
+Ao utilizar o **WebSocket Authorizer** no **API Gateway**, é importante observar que ele **não aceita headers** para autenticação. Portanto, o token de autorização deve ser enviado como um parâmetro na **QueryString** da URL de conexão.
+
+### Exemplo de URL com QueryString para autenticação
+
+```bash
+wss://<your-api-id>.execute-api.<region>.amazonaws.com/<stage>?authorization=<your-token>
+```
+
+### Implementação no Cliente
+
+Certifique-se de configurar o cliente WebSocket para incluir o token de autorização na URL. Por exemplo:
+
+```javascript
+const token = "seu-token-de-autorizacao";
+const socket = new WebSocket(`wss://<your-api-id>.execute-api.<region>.amazonaws.com/<stage>?authorization=${encodeURIComponent(token)}`);
+```
+
+## Configuração no Lambda Authorizer
+
+No Lambda Authorizer, você pode acessar o token de autorização a partir do evento recebido:
+
+```python
+def lambda_handler(event, context):
+    # Obtém o token de autorização da QueryString
+    token = event['queryStringParameters'].get('authorization', None)
+    if token == "seu-token-valido":
+        # Permitir acesso
+        return {
+            "principalId": "user",
+            "policyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Action": "execute-api:Invoke",
+                        "Effect": "Allow",
+                        "Resource": event['methodArn']
+                    }
+                ]
+            }
+        }
+    else:
+        # Negar acesso
+        return {
+            "principalId": "user",
+            "policyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Action": "execute-api:Invoke",
+                        "Effect": "Deny",
+                        "Resource": event['methodArn']
+                    }
+                ]
+            }
+        }
+```
+
+Essa abordagem garante que o token de autorização seja transmitido corretamente e validado pelo Lambda Authorizer.
